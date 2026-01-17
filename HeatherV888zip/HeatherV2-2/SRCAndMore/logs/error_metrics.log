@@ -1,0 +1,7 @@
+{"timestamp": "2026-01-17 05:25:02", "gateway": "gateway_check", "error_type": "timeout", "card_bin": "559888"}
+{"timestamp": "2026-01-17 08:48:59", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "454924"}
+{"timestamp": "2026-01-17 08:50:03", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "454924"}
+{"timestamp": "2026-01-17 08:50:49", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "454924"}
+{"timestamp": "2026-01-17 08:51:35", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "454924"}
+{"timestamp": "2026-01-17 08:57:43", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "426684"}
+{"timestamp": "2026-01-17 08:59:30", "gateway": "stripe_real_auth_check", "error_type": "timeout", "card_bin": "414720"}

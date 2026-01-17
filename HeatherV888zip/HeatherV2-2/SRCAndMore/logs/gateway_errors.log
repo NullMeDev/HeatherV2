@@ -1,0 +1,35 @@
+[2026-01-17 05:25:02] GATEWAY: gateway_check
+  BIN: 559888
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 20s timeout
+------------------------------------------------------------
+[2026-01-17 08:48:59] GATEWAY: stripe_real_auth_check
+  BIN: 454924
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
+[2026-01-17 08:50:03] GATEWAY: stripe_real_auth_check
+  BIN: 454924
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
+[2026-01-17 08:50:49] GATEWAY: stripe_real_auth_check
+  BIN: 454924
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
+[2026-01-17 08:51:35] GATEWAY: stripe_real_auth_check
+  BIN: 454924
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
+[2026-01-17 08:57:43] GATEWAY: stripe_real_auth_check
+  BIN: 426684
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
+[2026-01-17 08:59:30] GATEWAY: stripe_real_auth_check
+  BIN: 414720
+  ERROR TYPE: timeout
+  MESSAGE: Gateway exceeded 22s timeout
+------------------------------------------------------------
