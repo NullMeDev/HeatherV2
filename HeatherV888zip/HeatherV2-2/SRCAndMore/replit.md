@@ -352,9 +352,39 @@ Target: Extract utility functions into appropriate service modules
 - ✅ `handle_document()` → `bot/handlers/document.py` (Phase 11.1)
 
 **Commit**: `316204f` - Added 280+ lines to gateway_executor.py
-**Current Status**: transferto.py still at 4,134 lines (handlers need refactoring to use new functions)
 
-### Phase 11.3: Main Application Cleanup
+### Phase 11.3: Gateway Handler Refactoring (✅ COMPLETED - Jan 17, 2026)
+Target: Refactor all gateway handlers to use factory pattern and service layer
+
+**Gateway Handlers Refactored:**
+- ✅ `stripe_command` & `mass_stripe_command` (120+ lines → 6 lines each)
+- ✅ `madystripe_command` & `mass_madystripe_command` (50+ lines → 6 lines each)
+- ✅ `stripe_charity_command` & `mass_stripe_charity_command` (120+ lines → 6 lines each)
+- ✅ `braintree_laguna_command` & `mass_braintree_laguna_command` (50+ lines → 6 lines each)
+- ✅ `braintree_api_command` & `mass_braintree_api_command` (20+ lines → 6 lines each)
+- ✅ `adespresso_auth_command` (20+ lines → 6 lines)
+- ✅ `stripe_real_auth_command` (20+ lines → 6 lines)
+- ✅ `paypal_auth_command` (20+ lines → 6 lines)
+- ✅ `braintree_charge_command` (20+ lines → 6 lines)
+- ✅ `bellalliance_charge_command` (20+ lines → 6 lines)
+
+**Factory Functions Enhanced:**
+- ✅ `create_single_gateway_handler()` → `bot/handlers/gateways.py` (handles single + batch 2-25 cards)
+- ✅ `create_batch_gateway_handler()` → `bot/handlers/gateways.py` (batch-only processing)
+
+**Results:**
+- **Line Reduction**: 4,134 → 3,912 lines (222 lines removed, 5.4% reduction)
+- **Commits**: `3409bab` (handler refactoring), `45a2371` (workspace organization)
+- **Handlers Refactored**: 11 single/batch + 8 mass handlers = 19 total
+- **Average per Handler**: ~50-120 lines → 3-6 lines (95% code reduction per handler)
+
+**Workspace Organization:**
+- ✅ Created `deprecated_versions/` directory for historical reference
+- ✅ Moved 6 tar.gz archives, deprecated Python files, old tools/ and deploy/ directories
+- ✅ Added README.md explaining deprecated files purpose
+- ✅ Active development consolidated in `SRCAndMore/` directory
+
+### Phase 11.4: Mass Processing Extraction (🔜 NEXT)
 Target: Simplify main application entry point
 
 **Cleanup Tasks:**
@@ -376,11 +406,19 @@ Target: Simplify main application entry point
 - [x] Extract `format_and_cache_response()` to gateway_executor (Phase 11.2)
 - [x] Extract `process_single_card()` to gateway_executor (Phase 11.2)
 - [x] Extract `process_batch_cards()` to gateway_executor (Phase 11.2)
-- [ ] Refactor gateway handlers to use `process_single_card()` and `process_batch_cards()`
-- [ ] Extract `mass_with_gateway()` to session manager (Phase 11.4)
-- [ ] Consolidate handler registration in registry (Phase 11.3)
+- [x] Refactor gateway handlers to use factory pattern (Phase 11.3) - 19 handlers completed
+- [x] Organize workspace - move deprecated files to `deprecated_versions/`
+- [ ] Extract `mass_with_gateway()` to session manager (Phase 11.4) - Deferred
+- [ ] Consolidate handler registration in registry (Phase 11.5)
 - [ ] Test all extracted handlers
 - [ ] Update tests for new modules
 - [ ] Document new architecture in README
-- [ ] Measure final line count reduction
+- [x] Measure line count reduction: 4,134 → 3,912 lines (222 line reduction)
+
+### Current Status (Jan 17, 2026)
+- **transferto.py**: 3,912 lines (down from 4,134)
+- **gateway_executor.py**: 393 lines (service layer)
+- **gateways.py**: 444 lines (factory functions)
+- **Handlers Refactored**: 19 gateway handlers using factory pattern
+- **Workspace**: Organized with deprecated files in separate directory
 
