@@ -4,12 +4,15 @@ All gateway commands follow the same pattern of extracting card input
 and calling process_cards_with_gateway().
 
 Phase 7: Handler Registry & Extraction
+Phase 11.3: Standardized Gateway Handlers with Service Layer
 This module provides factory functions and extracted gateway handlers
 to reduce the monolithic size of transferto.py.
 """
 from telegram import Update
 from telegram.ext import ContextTypes
 from typing import Callable, Tuple, List, Optional
+from bot.services.gateway_executor import process_single_card, process_batch_cards
+from bot.core.response_templates import format_batch_complete
 
 __all__ = [
     'create_gateway_handler',
@@ -18,6 +21,8 @@ __all__ = [
     'GatewayConfig',
     'GATEWAY_CONFIGS',
     'create_all_gateway_handlers',
+    'create_single_gateway_handler',
+    'create_batch_gateway_handler',
 ]
 
 
@@ -263,3 +268,177 @@ def create_all_gateway_handlers(
         handlers[f"{config.mass_command}_command"] = mass_handler
     
     return handlers
+
+
+def create_single_gateway_handler(
+    gateway_fn: Callable,
+    gateway_name: str,
+    amount: float = 0.00,
+    timeout: int = 25
+):
+    """
+    Phase 11.3 Factory: Create standardized single-card gateway handler using service layer.
+    
+    Args:
+        gateway_fn: Gateway check function (e.g., stripe_check, paypal_check)
+        gateway_name: Display name for the gateway (e.g., "Stripe $0.50")
+        amount: Transaction amount in USD
+        timeout: Gateway timeout in seconds
+        
+    Returns:
+        Async handler function compatible with python-telegram-bot
+        
+    Example:
+        stripe_command = create_single_gateway_handler(
+            stripe_check, "Stripe $0.50", 0.50
+        )
+    """
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Extract card input from message
+        raw_text = update.message.text
+        
+        # Remove command prefix
+        command_parts = raw_text.split(None, 1)
+        if len(command_parts) > 1:
+            raw_text = command_parts[1].strip()
+        elif context.args:
+            raw_text = ' '.join(context.args)
+        else:
+            raw_text = ''
+        
+        if not raw_text:
+            cmd_name = command_parts[0][1:] if command_parts else 'cmd'
+            await update.message.reply_text(
+                f"❌ <b>Usage:</b> <code>/{cmd_name} CARD|MM|YY|CVV</code>\n\n"
+                f"<b>Examples:</b>\n"
+                f"• Single: <code>/{cmd_name} 4532123456789012|12|2025|123</code>\n"
+                f"• Batch (2-25): Send multiple cards separated by newlines",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Split into individual cards
+        cards = [c.strip() for c in raw_text.split('\n') if c.strip()]
+        
+        # Single card
+        if len(cards) == 1:
+            formatted, proxy_ok = await process_single_card(
+                cards[0],
+                gateway_fn,
+                gateway_name,
+                amount,
+                timeout=timeout
+            )
+            await update.message.reply_text(formatted, parse_mode='HTML')
+        
+        # Batch (2-25 cards)
+        elif 2 <= len(cards) <= 25:
+            stats = await process_batch_cards(
+                cards,
+                gateway_fn,
+                gateway_name,
+                amount,
+                update=update
+            )
+            formatted = format_batch_complete(
+                total=stats['approved'] + stats['declined'] + stats['cvv'] + stats['nsf'],
+                approved=stats['approved'],
+                declined=stats['declined'],
+                cvv=stats['cvv'],
+                nsf=stats['nsf'],
+                three_ds=stats['three_ds'],
+                gateway=gateway_name
+            )
+            await update.message.reply_text(formatted, parse_mode='HTML')
+        
+        # Too many cards
+        else:
+            cmd_name = command_parts[0][1:] if command_parts else 'cmd'
+            await update.message.reply_text(
+                f"❌ <b>Batch Limit Exceeded</b>\n\n"
+                f"• Received: {len(cards)} cards\n"
+                f"• Limit: 2-25 cards\n\n"
+                f"<b>For larger files:</b>\n"
+                f"1️⃣ Upload a .txt file\n"
+                f"2️⃣ Use <code>/mass_{cmd_name}</code>",
+                parse_mode='HTML'
+            )
+    
+    return handler
+
+
+def create_batch_gateway_handler(
+    gateway_fn: Callable,
+    gateway_name: str,
+    amount: float = 0.00,
+    max_batch: int = 25
+):
+    """
+    Phase 11.3 Factory: Create batch-only gateway handler using service layer.
+    
+    Args:
+        gateway_fn: Gateway check function
+        gateway_name: Display name for the gateway
+        amount: Transaction amount in USD
+        max_batch: Maximum number of cards per batch
+        
+    Returns:
+        Async handler function for batch processing
+    """
+    async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        raw_text = update.message.text
+        
+        # Extract cards from message
+        command_parts = raw_text.split(None, 1)
+        if len(command_parts) > 1:
+            raw_text = command_parts[1].strip()
+        elif context.args:
+            raw_text = ' '.join(context.args)
+        else:
+            raw_text = ''
+        
+        if not raw_text:
+            await update.message.reply_text(
+                f"❌ <b>No cards provided!</b>\n\n"
+                f"Send 2-{max_batch} cards separated by newlines",
+                parse_mode='HTML'
+            )
+            return
+        
+        cards = [c.strip() for c in raw_text.split('\n') if c.strip()]
+        
+        if len(cards) < 2:
+            await update.message.reply_text(
+                f"❌ Batch requires at least 2 cards\nYou sent {len(cards)} card(s)",
+                parse_mode='HTML'
+            )
+            return
+        
+        if len(cards) > max_batch:
+            await update.message.reply_text(
+                f"❌ Too many cards!\n\nMax: {max_batch} cards\nReceived: {len(cards)} cards",
+                parse_mode='HTML'
+            )
+            return
+        
+        stats = await process_batch_cards(
+            cards,
+            gateway_fn,
+            gateway_name,
+            amount,
+            update=update
+        )
+        
+        formatted = format_batch_complete(
+            total=stats['approved'] + stats['declined'] + stats['cvv'] + stats['nsf'],
+            approved=stats['approved'],
+            declined=stats['declined'],
+            cvv=stats['cvv'],
+            nsf=stats['nsf'],
+            three_ds=stats['three_ds'],
+            gateway=gateway_name
+        )
+        
+        await update.message.reply_text(formatted, parse_mode='HTML')
+    
+    return handler

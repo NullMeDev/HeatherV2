@@ -120,7 +120,10 @@ from bot.services.logging_utils import log_gateway_error, log_error_metric
 from bot.infrastructure.http_client import create_session, get_random_headers
 from bot.handlers.system import create_start_handler, create_cmds_handler, create_menu_handler, create_proxy_handler, create_setproxy_handler, create_metrics_handler
 from bot.handlers.utility import create_gen_handler, create_fake_handler, create_chatgpt_handler, create_blackbox_handler, create_extrap_handler, create_stopextrap_handler
-from bot.handlers.gateways import create_gateway_handler, create_mass_handler
+from bot.handlers.gateways import (
+    create_gateway_handler, create_mass_handler,
+    create_single_gateway_handler, create_batch_gateway_handler
+)
 from bot.handlers.callbacks import create_button_callback_handler
 from bot.handlers.shopify import (
     create_shopify_charge_handler,
@@ -1368,22 +1371,13 @@ async def stop_check_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
-async def stripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stripe - supports single card or batch of up to 25 cards"""
-    raw_text = update.message.text
-    for prefix in ['/s ', '/stripe ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, stripe_check, "Stripe", "stripe")
+# Phase 11.3: Refactored stripe_command to use factory
+stripe_command = create_single_gateway_handler(
+    gateway_fn=stripe_check,
+    gateway_name="Stripe",
+    amount=1.00,
+    timeout=30
+)
 
 
 async def mass_with_gateway(update: Update, context: ContextTypes.DEFAULT_TYPE, gateway_fn, gateway_name: str):
@@ -1808,9 +1802,13 @@ async def multigate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(summary, parse_mode='HTML')
 
 
-async def mass_stripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mass check using Stripe gateway"""
-    await mass_with_gateway(update, context, gateway_fn=stripe_check, gateway_name='Stripe')
+# Phase 11.3: Refactored mass_stripe_command to use batch factory
+mass_stripe_command = create_batch_gateway_handler(
+    gateway_fn=stripe_check,
+    gateway_name="Stripe",
+    amount=1.00,
+    max_batch=500
+)
 
 
 # ============================================================================
@@ -2096,55 +2094,22 @@ async def mass_ccfoundation_command(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text("This merchant gateway has been removed.", parse_mode='HTML')
 
 
-async def madystripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❌ Please provide a card in format: CARD|MM|YY|CVV", parse_mode='HTML')
-        return
-    card_input = context.args[0]
-    parts = card_input.split('|')
-    if len(parts) != 4:
-        await update.message.reply_text("❌ Invalid format! Use CARD|MM|YY|CVV", parse_mode='HTML')
-        return
-    card_num = parts[0].strip()
-    card_mon = parts[1].strip()
-    card_yer = parts[2].strip()[-2:]
-    card_cvc = parts[3].strip()
-    
-    start_time = time.time()
-    result, proxy_ok = await call_gateway_with_timeout(madystripe_check, card_num, card_mon, card_yer, card_cvc, timeout=22, proxy=PROXY)
-    elapsed_sec = round(time.time() - start_time, 2)
-    
-    print(f"[GATE] MadyStripe | Card: {card_num[-4:]} | Result: {result} | Proxy: {proxy_ok}")
-    
-    status = ApprovalStatus.DECLINED
-    if result and "Error" not in result:
-        if any(keyword in result.lower() for keyword in ["charged", "approved", "success", "accesstoken", "cartid"]):
-            status = ApprovalStatus.APPROVED
-        elif "cvv" in result.lower():
-            status = ApprovalStatus.CVV_ISSUE
-        elif "insufficient" in result.lower():
-            status = ApprovalStatus.INSUFFICIENT_FUNDS
-    
-    bank_name, country = lookup_bin_info(card_num)
-    record_metric('MadyStripe', card_num[:6], status.value, int(elapsed_sec * 1000), user_id=update.message.from_user.id)
-    
-    formatted_response = await format_and_cache_response(
-        gateway_name="MadyStripe",
-        card_input=card_input,
-        status=status,
-        message=result,
-        elapsed_sec=elapsed_sec,
-        security_type=detect_security_type(result),
-        vbv_status="Successful" if status == ApprovalStatus.APPROVED else "Unknown",
-        proxy_alive=proxy_ok,
-        bank_name=bank_name,
-        country=country
-    )
-    await update.message.reply_text(formatted_response, parse_mode='HTML')
+# Phase 11.3: Refactored madystripe_command to use factory
+madystripe_command = create_single_gateway_handler(
+    gateway_fn=madystripe_check,
+    gateway_name="MadyStripe",
+    amount=1.00,
+    timeout=22
+)
 
 
-async def mass_madystripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await mass_with_gateway(update, context, gateway_fn=madystripe_check, gateway_name='MadyStripe')
+# Phase 11.3: Refactored mass_madystripe_command to use batch factory
+mass_madystripe_command = create_batch_gateway_handler(
+    gateway_fn=madystripe_check,
+    gateway_name="MadyStripe",
+    amount=1.00,
+    max_batch=500
+)
 
 
 async def checkout_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2690,177 +2655,40 @@ async def allcharge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-async def stripe_charity_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stripe Charity gate - uses verified working PKs from foe.org and charitywater.org
-    Supports up to 25 cards on separate lines"""
-    
-    # Get full message text to support multi-line input
-    full_text = update.message.text or ""
-    lines = full_text.strip().split('\n')
-    
-    # Parse cards from all lines
-    cards = []
-    for i, line in enumerate(lines):
-        line = line.strip()
-        # First line has the command, remove it
-        if i == 0:
-            line = line.replace('/sc2', '').replace('/stripe_charity', '').strip()
-        
-        if not line or '|' not in line:
-            continue
-        
-        parts = line.split('|')
-        if len(parts) == 4:
-            card_num = parts[0].strip()
-            if card_num.isdigit() and len(card_num) >= 13:
-                cards.append({
-                    'input': line,
-                    'num': card_num,
-                    'mon': parts[1].strip(),
-                    'yer': parts[2].strip()[-2:],
-                    'cvc': parts[3].strip()
-                })
-    
-    if not cards:
-        await update.message.reply_text("❌ Please provide card(s) in format: CARD|MM|YY|CVV\n\nYou can check up to 25 cards at once, one per line.", parse_mode='HTML')
-        return
-    
-    # Limit to 25 cards
-    if len(cards) > 25:
-        cards = cards[:25]
-        await update.message.reply_text(f"⚠️ Limited to first 25 cards", parse_mode='HTML')
-    
-    # Single card - instant result (no processing message)
-    if len(cards) == 1:
-        card = cards[0]
-        start_time = time.time()
-        result, proxy_ok = await call_gateway_with_timeout(stripe_charity_check, card['num'], card['mon'], card['yer'], card['cvc'], timeout=22, proxy=PROXY)
-        elapsed_sec = round(time.time() - start_time, 2)
-        
-        print(f"[GATE] Stripe Charity | Card: {card['num'][-4:]} | Result: {result} | Proxy: {proxy_ok}")
-        
-        status = ApprovalStatus.DECLINED
-        if result and "Error" not in result:
-            if "APPROVED" in result.upper():
-                status = ApprovalStatus.APPROVED
-            elif "CVV" in result.upper() or "CVC" in result.upper():
-                status = ApprovalStatus.CVV_ISSUE
-            elif "INSUFFICIENT" in result.upper() or "CCN" in result.upper():
-                status = ApprovalStatus.INSUFFICIENT_FUNDS
-        
-        bank_name, country = lookup_bin_info(card['num'])
-        
-        formatted_response = await format_and_cache_response(
-            gateway_name="Stripe Charity Auth",
-            card_input=card['input'],
-            status=status,
-            message=result,
-            elapsed_sec=elapsed_sec,
-            security_type=detect_security_type(result),
-            vbv_status="Successful" if status == ApprovalStatus.APPROVED else "Unknown",
-            proxy_alive=proxy_ok,
-            bank_name=bank_name,
-            country=country,
-            amount_usd=1.00
-        )
-        
-        await update.message.reply_text(formatted_response, parse_mode='HTML')
-        return
-    
-    # Multiple cards - batch check (each card gets individual instant result)
-    for idx, card in enumerate(cards, 1):
-        start_time = time.time()
-        result, proxy_ok = await call_gateway_with_timeout(stripe_charity_check, card['num'], card['mon'], card['yer'], card['cvc'], timeout=22, proxy=PROXY)
-        elapsed_sec = round(time.time() - start_time, 2)
-        
-        print(f"[GATE] Stripe Charity Batch {idx}/{len(cards)} | Card: {card['num'][-4:]} | Result: {result}")
-        
-        status = ApprovalStatus.DECLINED
-        if result and "Error" not in result:
-            if "APPROVED" in result.upper():
-                status = ApprovalStatus.APPROVED
-            elif "CVV" in result.upper() or "CVC" in result.upper():
-                status = ApprovalStatus.CVV_ISSUE
-            elif "INSUFFICIENT" in result.upper() or "CCN" in result.upper():
-                status = ApprovalStatus.INSUFFICIENT_FUNDS
-        
-        bank_name, country = lookup_bin_info(card['num'])
-        
-        formatted_response = await format_and_cache_response(
-            gateway_name="Stripe Charity Auth",
-            card_input=card['input'],
-            status=status,
-            message=result,
-            elapsed_sec=elapsed_sec,
-            security_type=detect_security_type(result),
-            vbv_status="Successful" if status == ApprovalStatus.APPROVED else "Unknown",
-            proxy_alive=proxy_ok,
-            bank_name=bank_name,
-            country=country,
-            amount_usd=1.00
-        )
-        
-        await update.message.reply_text(formatted_response, parse_mode='HTML')
-        
-        # Small delay between checks
-        if idx < len(cards):
-            await asyncio.sleep(1)
+# Phase 11.3: Refactored stripe_charity_command to use factory
+stripe_charity_command = create_single_gateway_handler(
+    gateway_fn=stripe_charity_check,
+    gateway_name="Stripe Charity Auth",
+    amount=1.00,
+    timeout=22
+)
 
 
-async def mass_stripe_charity_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await mass_with_gateway(update, context, gateway_fn=stripe_charity_check, gateway_name='Stripe Charity Auth')
+# Phase 11.3: Refactored mass_stripe_charity_command to use batch factory
+mass_stripe_charity_command = create_batch_gateway_handler(
+    gateway_fn=stripe_charity_check,
+    gateway_name="Stripe Charity Auth",
+    amount=1.00,
+    max_batch=500
+)
 
 
-async def braintree_laguna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Braintree Laguna gate - uses parts.lagunatools.com WooCommerce"""
-    if not context.args:
-        await update.message.reply_text("Please provide a card in format: CARD|MM|YY|CVV", parse_mode='HTML')
-        return
-    card_input = context.args[0]
-    parts = card_input.split('|')
-    if len(parts) != 4:
-        await update.message.reply_text("Invalid format! Use CARD|MM|YY|CVV", parse_mode='HTML')
-        return
-    card_num = parts[0].strip()
-    card_mon = parts[1].strip()
-    card_yer = parts[2].strip()[-2:]
-    card_cvc = parts[3].strip()
-    
-    start_time = time.time()
-    result, proxy_ok = await call_gateway_with_timeout(braintree_laguna_check, card_num, card_mon, card_yer, card_cvc, timeout=45, proxy=PROXY)
-    elapsed_sec = round(time.time() - start_time, 2)
-    
-    print(f"[GATE] Braintree Laguna | Card: {card_num[-4:]} | Result: {result} | Proxy: {proxy_ok}")
-    
-    status = ApprovalStatus.DECLINED
-    if result and "Error" not in result:
-        if "APPROVED" in result.upper():
-            status = ApprovalStatus.APPROVED
-        elif "CVV" in result.upper() or "CVC" in result.upper():
-            status = ApprovalStatus.CVV_ISSUE
-        elif "INSUFFICIENT" in result.upper():
-            status = ApprovalStatus.INSUFFICIENT_FUNDS
-    
-    bank_name, country = lookup_bin_info(card_num)
-    
-    formatted_response = await format_and_cache_response(
-        gateway_name="Braintree Auth (Laguna)",
-        card_input=card_input,
-        status=status,
-        message=result,
-        elapsed_sec=elapsed_sec,
-        security_type=detect_security_type(result),
-        vbv_status="Successful" if status == ApprovalStatus.APPROVED else "Unknown",
-        proxy_alive=proxy_ok,
-        bank_name=bank_name,
-        country=country
-    )
-    
-    await update.message.reply_text(formatted_response, parse_mode='HTML')
+# Phase 11.3: Refactored braintree_laguna_command to use factory
+braintree_laguna_command = create_single_gateway_handler(
+    gateway_fn=braintree_laguna_check,
+    gateway_name="Braintree Auth (Laguna)",
+    amount=1.00,
+    timeout=45
+)
 
 
-async def mass_braintree_laguna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await mass_with_gateway(update, context, gateway_fn=braintree_laguna_check, gateway_name='Braintree Auth (Laguna)')
+# Phase 11.3: Refactored mass_braintree_laguna_command to use batch factory
+mass_braintree_laguna_command = create_batch_gateway_handler(
+    gateway_fn=braintree_laguna_check,
+    gateway_name="Braintree Auth (Laguna)",
+    amount=1.00,
+    max_batch=500
+)
 
 
 lions_club_command = create_gateway_handler(
@@ -3007,94 +2835,49 @@ async def mass_districtpeople_command(update: Update, context: ContextTypes.DEFA
     )
 
 
-async def adespresso_auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """AdEspresso Auth - supports single or batch (up to 25)"""
-    raw_text = update.message.text
-    for prefix in ['/adespresso ', '/ade ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, adespresso_auth_check, "AdEspresso Auth", "adespresso")
+# Phase 11.3: Refactored adespresso_auth_command to use factory
+adespresso_auth_command = create_single_gateway_handler(
+    gateway_fn=adespresso_auth_check,
+    gateway_name="AdEspresso Auth",
+    amount=0.00,  # Auth only
+    timeout=30
+)
 
 
-async def stripe_real_auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stripe Real $0 Auth - actual bank authorization via SetupIntent confirmation"""
-    raw_text = update.message.text
-    for prefix in ['/auth ', '/sauth ', '/realauth ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, stripe_auth_epicalarc_check, "Stripe Real Auth $0", "stripe_real_auth")
+# Phase 11.3: Refactored stripe_real_auth_command to use factory
+stripe_real_auth_command = create_single_gateway_handler(
+    gateway_fn=stripe_auth_epicalarc_check,
+    gateway_name="Stripe Real Auth $0",
+    amount=0.00,  # Auth only
+    timeout=30
+)
 
 
-async def paypal_auth_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """PayPal $0 Auth - real bank authorization via PayPal GraphQL"""
-    raw_text = update.message.text
-    for prefix in ['/ppauth ', '/pauth ', '/paypalauth ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, paypal_auth_check, "PayPal Auth $0", "paypal_auth")
+# Phase 11.3: Refactored paypal_auth_command to use factory
+paypal_auth_command = create_single_gateway_handler(
+    gateway_fn=paypal_auth_check,
+    gateway_name="PayPal Auth $0",
+    amount=0.00,  # Auth only
+    timeout=30
+)
 
 
-async def braintree_charge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Braintree Real Charge - actual payment method add via Laguna"""
-    raw_text = update.message.text
-    for prefix in ['/btc ', '/b3c ', '/braintreecharge ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, braintree_charge_check, "Braintree Charge", "braintree_charge")
+# Phase 11.3: Refactored braintree_charge_command to use factory
+braintree_charge_command = create_single_gateway_handler(
+    gateway_fn=braintree_charge_check,
+    gateway_name="Braintree Charge",
+    amount=1.00,
+    timeout=30
+)
 
 
-async def bellalliance_charge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bell Alliance $5 CAD - supports single or batch (up to 25)"""
-    raw_text = update.message.text
-    for prefix in ['/bellalliance ', '/ba ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, bellalliance_charge_check, "Bell Alliance $5", "bellalliance")
+# Phase 11.3: Refactored bellalliance_charge_command to use factory
+bellalliance_charge_command = create_single_gateway_handler(
+    gateway_fn=bellalliance_charge_check,
+    gateway_name="Bell Alliance $5",
+    amount=5.00,
+    timeout=30
+)
 
 
 mass_corrigan_command = create_mass_handler(corrigan_check, 'Corrigan $0.50', mass_with_gateway)
@@ -3292,27 +3075,22 @@ shopify_health_command = create_shopify_health_handler(
 )
 
 
-async def braintree_api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Braintree API - supports single or batch (up to 25)"""
-    raw_text = update.message.text
-    for prefix in ['/braintree_api ', '/btapi ']:
-        if raw_text.lower().startswith(prefix):
-            raw_text = raw_text[len(prefix):].strip()
-            break
-    else:
-        if '\n' in raw_text:
-            raw_text = raw_text.split('\n', 1)[1].strip()
-        elif context.args:
-            raw_text = ' '.join(context.args)
-        else:
-            raw_text = ''
-    
-    await process_cards_with_gateway(update, raw_text, braintree_auth_api_check, "Braintree API", "braintree_api")
+# Phase 11.3: Refactored braintree_api_command to use factory
+braintree_api_command = create_single_gateway_handler(
+    gateway_fn=braintree_auth_api_check,
+    gateway_name="Braintree API",
+    amount=0.00,  # Auth only
+    timeout=30
+)
 
 
-async def mass_braintree_api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mass_braintree_api command"""
-    await mass_with_gateway(update, context, gateway_fn=braintree_auth_api_check, gateway_name='Braintree API')
+# Phase 11.3: Refactored mass_braintree_api_command to use batch factory
+mass_braintree_api_command = create_batch_gateway_handler(
+    gateway_fn=braintree_auth_api_check,
+    gateway_name="Braintree API",
+    amount=0.00,  # Auth only
+    max_batch=500
+)
 
 
 shopify_auto_command = create_shopify_auto_handler(
