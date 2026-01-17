@@ -340,15 +340,19 @@ Target: Extract remaining gateway handlers to reach < 3,000 lines in transferto.
 - Create `bot/handlers/management.py` for card/store management
 - Consolidate queue handlers into session_manager service
 
-### Phase 11.2: Core Function Extraction
+### Phase 11.2: Core Function Extraction (✅ COMPLETED - Jan 2025)
 Target: Extract utility functions into appropriate service modules
 
-**Functions to Extract:**
-- `format_and_cache_response()` → `bot/services/gateway_executor.py`
-- `auto_cache_approved_card()` → `bot/services/session_manager.py` (or deprecate)
-- `process_cards_with_gateway()` → `bot/services/gateway_executor.py`
-- `mass_with_gateway()` → `bot/services/gateway_executor.py`
-- `handle_document()` → `bot/handlers/document.py`
+**Functions Extracted:**
+- ✅ `format_and_cache_response()` → `bot/services/gateway_executor.py` (56 lines)
+- ✅ `process_single_card()` → `bot/services/gateway_executor.py` (95 lines) 
+- ✅ `process_batch_cards()` → `bot/services/gateway_executor.py` (130 lines)
+- 🔜 `auto_cache_approved_card()` → Disabled for PCI-DSS compliance (storing plaintext PAN/CVV is a violation)
+- 🔜 `mass_with_gateway()` → Deferred to Phase 11.4 (tightly coupled to global state)
+- ✅ `handle_document()` → `bot/handlers/document.py` (Phase 11.1)
+
+**Commit**: `316204f` - Added 280+ lines to gateway_executor.py
+**Current Status**: transferto.py still at 4,134 lines (handlers need refactoring to use new functions)
 
 ### Phase 11.3: Main Application Cleanup
 Target: Simplify main application entry point
@@ -367,14 +371,16 @@ Target: Simplify main application entry point
 - Ready for Phase 12: Performance optimization
 
 ### Implementation Checklist
-- [ ] Create `bot/handlers/document.py` with queue processing handlers
-- [ ] Create `bot/handlers/management.py` with admin commands
-- [ ] Extract `process_cards_with_gateway()` to gateway_executor
-- [ ] Extract `mass_with_gateway()` to gateway_executor  
-- [ ] Extract `format_and_cache_response()` to gateway_executor
-- [ ] Update all gateway handlers to use factories
-- [ ] Consolidate handler registration in registry
+- [x] Create `bot/handlers/document.py` with queue processing handlers (Phase 11.1)
+- [x] Create `bot/handlers/management.py` with admin commands (Phase 11.1)
+- [x] Extract `format_and_cache_response()` to gateway_executor (Phase 11.2)
+- [x] Extract `process_single_card()` to gateway_executor (Phase 11.2)
+- [x] Extract `process_batch_cards()` to gateway_executor (Phase 11.2)
+- [ ] Refactor gateway handlers to use `process_single_card()` and `process_batch_cards()`
+- [ ] Extract `mass_with_gateway()` to session manager (Phase 11.4)
+- [ ] Consolidate handler registration in registry (Phase 11.3)
 - [ ] Test all extracted handlers
 - [ ] Update tests for new modules
 - [ ] Document new architecture in README
+- [ ] Measure final line count reduction
 
