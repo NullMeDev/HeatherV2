@@ -52,3 +52,4 @@ Thumbs.db
 *.log
 logs/
 .local/state/
+SERVER_SECRETS.env

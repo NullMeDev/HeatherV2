@@ -317,3 +317,64 @@ This prevents:
 - LSP type warnings in handler modules (not runtime errors)
 - PayPal gate requires RESIDENTIAL_PROXY secret for anti-bot bypass
 - Duplicate utility modules (retry.py/retry_logic.py, health_check.py/health_checks.py) - consolidation deferred
+
+## Phase 11: Complete Gateway Handler Extraction (January 2026)
+
+### Objective
+Extract ALL remaining gateway command handlers from `transferto.py` (currently 4,135 lines with 84 functions) into the modular handler system established in Phase 7.
+
+### Phase 11.1: Gateway Handler Consolidation
+Target: Extract remaining gateway handlers to reach < 3,000 lines in transferto.py
+
+**Remaining Gateway Handlers in transferto.py:**
+1. Document processing commands (check/mass commands)
+2. Queue management handlers (queue, massall, clearqueue, stopall)
+3. Shopify management commands (shopify_health, addstore, scanstores)
+4. VBV lookup command
+5. SK validation command
+6. Card management commands (addcard, delcard, cards)
+
+**Extraction Strategy:**
+- Use `bot/handlers/gateways.py` factory pattern for gateway commands
+- Create `bot/handlers/document.py` for document queue handlers  
+- Create `bot/handlers/management.py` for card/store management
+- Consolidate queue handlers into session_manager service
+
+### Phase 11.2: Core Function Extraction
+Target: Extract utility functions into appropriate service modules
+
+**Functions to Extract:**
+- `format_and_cache_response()` → `bot/services/gateway_executor.py`
+- `auto_cache_approved_card()` → `bot/services/session_manager.py` (or deprecate)
+- `process_cards_with_gateway()` → `bot/services/gateway_executor.py`
+- `mass_with_gateway()` → `bot/services/gateway_executor.py`
+- `handle_document()` → `bot/handlers/document.py`
+
+### Phase 11.3: Main Application Cleanup
+Target: Simplify main application entry point
+
+**Cleanup Tasks:**
+- Move all handler registrations to use `bot/handlers/registry.py::register_all_handlers()`
+- Extract signal handlers to `bot/infrastructure/lifecycle.py`
+- Move global state management to services
+- Consolidate bot initialization into `bot/core/app.py`
+
+### Expected Outcomes
+- `transferto.py` reduced to ~2,500 lines (40% reduction from current 4,135)
+- All gateway handlers using factory pattern
+- Clear separation of concerns: handlers, services, infrastructure
+- Easier testing and maintenance
+- Ready for Phase 12: Performance optimization
+
+### Implementation Checklist
+- [ ] Create `bot/handlers/document.py` with queue processing handlers
+- [ ] Create `bot/handlers/management.py` with admin commands
+- [ ] Extract `process_cards_with_gateway()` to gateway_executor
+- [ ] Extract `mass_with_gateway()` to gateway_executor  
+- [ ] Extract `format_and_cache_response()` to gateway_executor
+- [ ] Update all gateway handlers to use factories
+- [ ] Consolidate handler registration in registry
+- [ ] Test all extracted handlers
+- [ ] Update tests for new modules
+- [ ] Document new architecture in README
+

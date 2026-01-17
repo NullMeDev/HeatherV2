@@ -4,6 +4,9 @@ Handler Registration Module
 Provides a declarative configuration system for registering all command handlers.
 This module serves as the central wiring point for the entire bot.
 
+Phase 11: Complete Gateway Handler Extraction
+Updated with document and management handler imports.
+
 Usage in transferto.py:
     from bot.handlers.registry import register_all_handlers
     register_all_handlers(application, handlers_dict)
@@ -18,6 +21,8 @@ __all__ = [
     'SYSTEM_COMMANDS',
     'GATEWAY_COMMANDS',
     'UTILITY_COMMANDS',
+    'DOCUMENT_COMMANDS',
+    'MANAGEMENT_COMMANDS',
     'ALIAS_COMMANDS',
 ]
 
@@ -87,10 +92,16 @@ STRIPE_SCANNER_COMMANDS = [
     'importstripe', 'scanstripe', 'stripestats',
 ]
 
+DOCUMENT_COMMANDS = [
+    'queue', 'q', 'massall', 'ma', 'clearqueue', 'cq', 'stopall', 'sa',
+]
+
+MANAGEMENT_COMMANDS = [
+    'cards', 'addcard', 'delcard', 'vbv', 'sk',
+]
+
 UTILITY_COMMANDS = [
     'gen', 'fake', 'cg', 'bb',
-    'cards', 'addcard', 'delcard',
-    'vbv', 'sk',
     'categorize', 'catsites',
 ]
 
