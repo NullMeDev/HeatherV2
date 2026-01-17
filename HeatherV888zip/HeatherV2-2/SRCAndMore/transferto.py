@@ -140,6 +140,7 @@ from bot.handlers.scanner import (
     create_import_stripe_sites_handler,
     create_stripe_stats_handler,
 )
+from bot.infrastructure.lifecycle import register_signal_handlers
 
 
 async def auto_cache_approved_card(card_num: str, card_mon: str, card_yer: str, card_cvv: str,
@@ -3645,44 +3646,12 @@ async def stopall_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-def handle_shutdown(signum, frame):
-    """Handle graceful shutdown on SIGTERM/SIGINT"""
-    print(f"\n{F}[*] Bot shutting down gracefully...{RESET}")
-    
-    # Clear ongoing checks
-    for user_id in list(ongoing_checks.keys()):
-        try:
-            del ongoing_checks[user_id]
-        except KeyError:
-            pass
-    
-    # Clear stop flags
-    for user_id in list(stop_requested.keys()):
-        try:
-            del stop_requested[user_id]
-        except KeyError:
-            pass
-    
-    # Try to clean up temp files
-    try:
-        for user_id in list(uploaded_files.keys()):
-            file_path = uploaded_files[user_id]
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    except Exception as e:
-        print(f"{Z}[!] Error cleaning up files: {e}{RESET}")
-    
-    print(f"{F}[✓] Cleanup complete. Goodbye!{RESET}")
-    sys.exit(0)
-
-
 def main():
     """Main function to run the bot"""
     print(f"{F}[*] Starting PayPal Card Checker Bot...{RESET}")
     
     # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, handle_shutdown)
-    signal.signal(signal.SIGINT, handle_shutdown)
+    register_signal_handlers(ongoing_checks, stop_requested, uploaded_files)
     
     # Initialize database
     print(f"{F}[*] Initializing database...{RESET}")
