@@ -2003,8 +2003,9 @@ async def charge3_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("This gateway has been removed. Please use /c1, /c2, /c4, or /c5 instead.", parse_mode='HTML')
 
 
-mass_stripecharge_command = create_mass_handler(stripe_charge_check, 'Stripe $1 Charge', mass_with_gateway)
-mass_braintreeauth_command = create_mass_handler(braintree_auth_check, 'Braintree Auth', mass_with_gateway)
+# Phase 11.4: Converted to Phase 11.3 batch factory
+mass_stripecharge_command = create_batch_gateway_handler(stripe_charge_check, 'Stripe $1 Charge', 1.00, 500)
+mass_braintreeauth_command = create_batch_gateway_handler(braintree_auth_check, 'Braintree Auth', 0.00, 500)
 
 
 
@@ -2022,10 +2023,11 @@ async def checkoutauth_command(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
-mass_charge1_command = create_mass_handler(charge1_check, 'Charge Gate 1', mass_with_gateway)
-mass_charge2_command = create_mass_handler(charge2_check, 'Charge Gate 2', mass_with_gateway)
-mass_charge4_command = create_mass_handler(charge4_check, 'Charge Gate 4', mass_with_gateway)
-mass_charge5_command = create_mass_handler(charge5_check, 'Charge Gate 5', mass_with_gateway)
+# Phase 11.4: Converted to Phase 11.3 batch factory
+mass_charge1_command = create_batch_gateway_handler(charge1_check, 'Charge Gate 1', 1.00, 500)
+mass_charge2_command = create_batch_gateway_handler(charge2_check, 'Charge Gate 2', 2.00, 500)
+mass_charge4_command = create_batch_gateway_handler(charge4_check, 'Charge Gate 4', 4.00, 500)
+mass_charge5_command = create_batch_gateway_handler(charge5_check, 'Charge Gate 5', 5.00, 500)
 
 
 async def mass_charge3_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2294,20 +2296,21 @@ async def process_cards_with_gateway(update: Update, raw_text: str, gateway_fn, 
 
 
 # Gateway handlers using factory pattern
-charge1_command = create_gateway_handler(charge1_check, "Charge Gate 1", "stripe", ['/c1 '], process_cards_with_gateway)
-charge2_command = create_gateway_handler(charge2_check, "Charge Gate 2", "stripe", ['/c2 '], process_cards_with_gateway)
-charge4_command = create_gateway_handler(charge4_check, "Charge Gate 4", "stripe", ['/c4 '], process_cards_with_gateway)
-charge5_command = create_gateway_handler(charge5_check, "Charge Gate 5", "stripe", ['/c5 '], process_cards_with_gateway)
-stripecharge_command = create_gateway_handler(stripe_charge_check, "Stripe $1 Charge", "stripe_charge", ['/stripecharge ', '/sc '], process_cards_with_gateway)
-braintreeauth_command = create_gateway_handler(braintree_auth_check, "Braintree Auth", "braintree_auth", ['/braintreeauth ', '/bta '], process_cards_with_gateway)
-stripe_epicalarc_command = create_gateway_handler(stripe_auth_epicalarc_check, "Stripe Epicalarc", "stripe_epicalarc", ['/stripe_epicalarc ', '/epicalarc ', '/epi '], process_cards_with_gateway)
-corrigan_command = create_gateway_handler(corrigan_check, "Corrigan $0.50", "corrigan", ['/cf ', '/corrigan '], process_cards_with_gateway)
-texas_command = create_gateway_handler(texas_check, "Texas $0.50", "texas", ['/tsa ', '/texas '], process_cards_with_gateway)
-paypal_command = create_gateway_handler(paypal_charge_check, "PayPal $5", "paypal", ['/pp ', '/paypal '], process_cards_with_gateway)
-amex_command = create_gateway_handler(amex_auth_check, "Amex Auth", "amex_auth", ['/amex '], process_cards_with_gateway)
-shopify_checkout_command = create_gateway_handler(shopify_checkout_check, "Shopify Checkout", "shopify", ['/shopify ', '/shop ', '/sn '], process_cards_with_gateway)
-auto_detect_command = create_gateway_handler(auto_detect_check, "Auto-Detect", "auto_detect", ['/auto ', '/ad ', '/detect '], process_cards_with_gateway)
-shopify_nano_command = create_gateway_handler(shopify_nano_check, "Shopify", "shopify", ['/sn ', '/shopify_nano ', '/shopify '], process_cards_with_gateway)
+# Phase 11.4: Converted Phase 7 factory handlers to Phase 11.3 pattern
+charge1_command = create_single_gateway_handler(charge1_check, "Charge Gate 1", 1.00, 30)
+charge2_command = create_single_gateway_handler(charge2_check, "Charge Gate 2", 2.00, 30)
+charge4_command = create_single_gateway_handler(charge4_check, "Charge Gate 4", 4.00, 30)
+charge5_command = create_single_gateway_handler(charge5_check, "Charge Gate 5", 5.00, 30)
+stripecharge_command = create_single_gateway_handler(stripe_charge_check, "Stripe $1 Charge", 1.00, 30)
+braintreeauth_command = create_single_gateway_handler(braintree_auth_check, "Braintree Auth", 0.00, 30)
+stripe_epicalarc_command = create_single_gateway_handler(stripe_auth_epicalarc_check, "Stripe Epicalarc", 0.00, 30)
+corrigan_command = create_single_gateway_handler(corrigan_check, "Corrigan $0.50", 0.50, 30)
+texas_command = create_single_gateway_handler(texas_check, "Texas $0.50", 0.50, 30)
+paypal_command = create_single_gateway_handler(paypal_charge_check, "PayPal $5", 5.00, 30)
+amex_command = create_single_gateway_handler(amex_auth_check, "Amex Auth", 0.00, 30)
+shopify_checkout_command = create_single_gateway_handler(shopify_checkout_check, "Shopify Checkout", 1.00, 30)
+auto_detect_command = create_single_gateway_handler(auto_detect_check, "Auto-Detect", 1.00, 30)
+shopify_nano_command = create_single_gateway_handler(shopify_nano_check, "Shopify", 1.00, 30)
 
 
 async def bulk_check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2691,27 +2694,33 @@ mass_braintree_laguna_command = create_batch_gateway_handler(
 )
 
 
-lions_club_command = create_gateway_handler(
+# Phase 11.4: Converted to Phase 11.3 pattern
+lions_club_command = create_single_gateway_handler(
     lambda n, m, y, c, proxy=None: lions_club_check(n, m, y, c, None),
-    "Lions Club $5", "lions_club", ['/lc5 ', '/lions_club ', '/lions '], process_cards_with_gateway
+    "Lions Club $5",
+    5.00,
+    30
 )
-mass_lions_club_command = create_mass_handler(
-    lambda n, m, y, c, proxy=None: lions_club_check(n, m, y, c, None), 'Lions Club $5', mass_with_gateway
+mass_lions_club_command = create_batch_gateway_handler(
+    lambda n, m, y, c, proxy=None: lions_club_check(n, m, y, c, None),
+    "Lions Club $5",
+    5.00,
+    500
 )
 
+foe_auth_command = create_single_gateway_handler(foe_check, "Stripe Auth $0", 0.00, 30)
+charitywater_auth_command = create_single_gateway_handler(charitywater_check, "Stripe Auth $0", 0.00, 30)
+donorschoose_auth_command = create_single_gateway_handler(donorschoose_check, "Stripe Auth $0", 0.00, 30)
+newschools_auth_command = create_single_gateway_handler(newschools_check, "Stripe Auth $0", 0.00, 30)
+ywca_auth_command = create_single_gateway_handler(ywca_check, "Stripe Auth $0", 0.00, 30)
 
-foe_auth_command = create_gateway_handler(foe_check, "Stripe Auth $0", "foe", ['/sa1 '], process_cards_with_gateway)
-charitywater_auth_command = create_gateway_handler(charitywater_check, "Stripe Auth $0", "charitywater", ['/sa2 '], process_cards_with_gateway)
-donorschoose_auth_command = create_gateway_handler(donorschoose_check, "Stripe Auth $0", "donorschoose", ['/sa3 '], process_cards_with_gateway)
-newschools_auth_command = create_gateway_handler(newschools_check, "Stripe Auth $0", "newschools", ['/sa4 '], process_cards_with_gateway)
-ywca_auth_command = create_gateway_handler(ywca_check, "Stripe Auth $0", "ywca", ['/sa5 '], process_cards_with_gateway)
 
-
-mass_foe_auth_command = create_mass_handler(foe_check, 'Stripe Auth $0', mass_with_gateway)
-mass_charitywater_auth_command = create_mass_handler(charitywater_check, 'Stripe Auth $0', mass_with_gateway)
-mass_donorschoose_auth_command = create_mass_handler(donorschoose_check, 'Stripe Auth $0', mass_with_gateway)
-mass_newschools_auth_command = create_mass_handler(newschools_check, 'Stripe Auth $0', mass_with_gateway)
-mass_ywca_auth_command = create_mass_handler(ywca_check, 'Stripe Auth $0', mass_with_gateway)
+# Phase 11.4: Converted to Phase 11.3 batch factory
+mass_foe_auth_command = create_batch_gateway_handler(foe_check, 'Stripe Auth $0', 0.00, 500)
+mass_charitywater_auth_command = create_batch_gateway_handler(charitywater_check, 'Stripe Auth $0', 0.00, 500)
+mass_donorschoose_auth_command = create_batch_gateway_handler(donorschoose_check, 'Stripe Auth $0', 0.00, 500)
+mass_newschools_auth_command = create_batch_gateway_handler(newschools_check, 'Stripe Auth $0', 0.00, 500)
+mass_ywca_auth_command = create_batch_gateway_handler(ywca_check, 'Stripe Auth $0', 0.00, 500)
 
 
 
@@ -2880,11 +2889,12 @@ bellalliance_charge_command = create_single_gateway_handler(
 )
 
 
-mass_corrigan_command = create_mass_handler(corrigan_check, 'Corrigan $0.50', mass_with_gateway)
-mass_texas_command = create_mass_handler(texas_check, 'Texas $0.50', mass_with_gateway)
-mass_paypal_command = create_mass_handler(paypal_charge_check, 'PayPal $5', mass_with_gateway)
-mass_shopify_checkout_command = create_mass_handler(shopify_checkout_check, 'Shopify Checkout', mass_with_gateway)
-mass_auto_detect_command = create_mass_handler(auto_detect_check, 'Auto-Detect', mass_with_gateway)
+# Phase 11.4: Converted to Phase 11.3 batch factory
+mass_corrigan_command = create_batch_gateway_handler(corrigan_check, 'Corrigan $0.50', 0.50, 500)
+mass_texas_command = create_batch_gateway_handler(texas_check, 'Texas $0.50', 0.50, 500)
+mass_paypal_command = create_batch_gateway_handler(paypal_charge_check, 'PayPal $5', 5.00, 500)
+mass_shopify_checkout_command = create_batch_gateway_handler(shopify_checkout_check, 'Shopify Checkout', 1.00, 500)
+mass_auto_detect_command = create_batch_gateway_handler(auto_detect_check, 'Auto-Detect', 1.00, 500)
 
 
 categorize_sites_command = create_categorize_sites_handler(detect_platform=detect_platform)
@@ -2892,10 +2902,11 @@ categorize_sites_command = create_categorize_sites_handler(detect_platform=detec
 
 # ============= PHASE 1 NEW GATEWAY COMMANDS =============
 
-mass_stripe_epicalarc_command = create_mass_handler(stripe_auth_epicalarc_check, 'Stripe Epicalarc', mass_with_gateway)
-mass_stripe_real_auth_command = create_mass_handler(stripe_auth_epicalarc_check, 'Stripe Real Auth $0', mass_with_gateway)
-mass_paypal_auth_command = create_mass_handler(paypal_auth_check, 'PayPal Auth $0', mass_with_gateway)
-mass_braintree_charge_command = create_mass_handler(braintree_charge_check, 'Braintree Charge', mass_with_gateway)
+# Phase 11.4: Converted to Phase 11.3 batch factory
+mass_stripe_epicalarc_command = create_batch_gateway_handler(stripe_auth_epicalarc_check, 'Stripe Epicalarc', 0.00, 500)
+mass_stripe_real_auth_command = create_batch_gateway_handler(stripe_auth_epicalarc_check, 'Stripe Real Auth $0', 0.00, 500)
+mass_paypal_auth_command = create_batch_gateway_handler(paypal_auth_check, 'PayPal Auth $0', 0.00, 500)
+mass_braintree_charge_command = create_batch_gateway_handler(braintree_charge_check, 'Braintree Charge', 1.00, 500)
 
 
 
