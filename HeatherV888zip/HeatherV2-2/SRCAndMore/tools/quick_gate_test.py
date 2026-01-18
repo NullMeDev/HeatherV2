@@ -13,14 +13,28 @@ import os
 import sys
 import time
 
+# Load environment variables from .env file
+env_file = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if os.path.exists(env_file):
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key] = value
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Test one card
 TEST_CARD = "4430577601819849|08|28|005"
 
-# Proxy
-PROXY = "http://user_pinta:1acNvmOToR6d-country-US-state-Colorado-city-Denver@residential.ip9.io:8000"
+# Proxy (proper dict format)
+PROXY_URL = "http://user_pinta:1acNvmOToR6d-country-US-state-Colorado-city-Denver@residential.ip9.io:8000"
+PROXY = {
+    "http": PROXY_URL,
+    "https": PROXY_URL
+}
 
 def test_gate(gate_name: str, module_name: str, func_name: str):
     """Test a single gate with one card"""
@@ -42,9 +56,12 @@ def test_gate(gate_name: str, module_name: str, func_name: str):
         # Classify
         if result:
             result_lower = result.lower()
-            if "error" in result_lower or "timeout" in result_lower:
+            # Handle explicit UNKNOWN responses from gates
+            if "unknown" in result_lower and "⚠️" in result:
+                status = "⚠️  UNKNOWN (from gate)"
+            elif "error" in result_lower or "timeout" in result_lower:
                 status = "❌ ERROR"
-            elif any(kw in result_lower for kw in ["charged", "approved", "success", "ccn", "live"]):
+            elif any(kw in result_lower for kw in ["charged", "approved", "success", "ccn", "live", "tokenized"]):
                 status = "✅ OK"
             elif "declined" in result_lower:
                 status = "✅ OK (declined)"
@@ -70,7 +87,7 @@ def main():
     print("QUICK GATE STATUS CHECK")
     print("=" * 60)
     print(f"Test Card: {TEST_CARD}")
-    print(f"Proxy: {PROXY[:50]}...")
+    print(f"Proxy: {PROXY_URL[:50]}...")
     print("=" * 60)
     
     # Define gates to test
@@ -82,8 +99,8 @@ def main():
         ("Stripe Charity", "stripe_charity", "stripe_charity_check"),
         ("Lions Club", "lions_club", "lions_club_check"),
         ("Mady Stripe", "madystripe", "madystripe_check"),
-        ("Stripe Epicalarc", "stripe_auth_epicalarc", "epicalarc_check"),
-        ("Braintree Laguna", "braintree_laguna", "braintree_laguna_check"),
+        ("Stripe Epicalarc", "stripe_auth_epicalarc", "stripe_auth_epicalarc_check"),
+        ("Braintree Laguna", "braintree_laguna", "gateway_check"),
         ("WooStripe Auth", "woostripe_auth", "woostripe_auth_check"),
         ("Shopify Checkout", "shopify_checkout", "shopify_checkout_check"),
     ]

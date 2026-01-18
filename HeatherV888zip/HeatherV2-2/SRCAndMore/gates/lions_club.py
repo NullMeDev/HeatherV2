@@ -22,7 +22,13 @@ def lions_club_check(card_num, card_mon, card_yer, card_cvc, proxy=None):
             browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
         )
         
-        proxies = {'http': proxy, 'https': proxy} if proxy else None
+        # Handle both string and dict proxy formats
+        if isinstance(proxy, dict):
+            proxies = proxy
+        elif proxy:
+            proxies = {'http': proxy, 'https': proxy}
+        else:
+            proxies = None
         
         ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Mobile/15E148 Safari/604.1"
         
