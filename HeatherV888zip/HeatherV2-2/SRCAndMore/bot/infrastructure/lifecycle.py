@@ -5,6 +5,7 @@ Handles graceful shutdown, signal handlers, and cleanup operations.
 
 Phase 11.5: Extracted from main transferto.py to centralize lifecycle management.
 Phase 12.1: Added session pool cleanup on shutdown.
+Phase 12.2: Added async proxy pool cleanup on shutdown.
 """
 
 import os
@@ -57,6 +58,16 @@ async def cleanup_resources(
         print("[✓] Session pool cleaned up")
     except Exception as e:
         print(f"[!] Error cleaning up session pool: {e}")
+    
+    # Cleanup async proxy pool (Phase 12.2)
+    try:
+        from bot.infrastructure.proxy_pool import get_proxy_pool
+        pool = get_proxy_pool()
+        if pool:
+            await pool.stop()
+            print("[✓] Async proxy pool cleaned up")
+    except Exception as e:
+        print(f"[!] Error cleaning up proxy pool: {e}")
 
 
 def handle_shutdown(

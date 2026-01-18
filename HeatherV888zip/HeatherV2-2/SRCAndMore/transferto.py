@@ -143,6 +143,7 @@ from bot.handlers.scanner import (
 )
 from bot.infrastructure.lifecycle import register_signal_handlers
 from bot.infrastructure.session_pool import initialize_session_pool, cleanup_session_pool
+from bot.infrastructure.proxy_pool import init_async_proxy_pool, get_proxy_pool
 
 
 async def auto_cache_approved_card(card_num: str, card_mon: str, card_yer: str, card_cvv: str,
@@ -3845,6 +3846,13 @@ def main():
         )
     )
     print(f"{F}[✓] Session pool ready{RESET}")
+    
+    # Initialize async proxy pool (Phase 12.2)
+    print(f"{F}[*] Initializing async proxy pool...{RESET}")
+    asyncio.get_event_loop().run_until_complete(
+        init_async_proxy_pool(check_interval=60)
+    )
+    print(f"{F}[✓] Async proxy pool ready{RESET}")
     
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
