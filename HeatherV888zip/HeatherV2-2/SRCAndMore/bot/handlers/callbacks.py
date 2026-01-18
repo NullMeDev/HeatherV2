@@ -107,20 +107,21 @@ Select gateway category:"""
         elif category == "single_auth":
             msg = """<b>🔐 REAL AUTH GATES ($0 Bank Verified)</b>
 
-<code>/auth</code> - Stripe Real $0 Auth
+<code>/auth</code> - Stripe Payment Intent Auth
 └─ <code>/auth CARD|MM|YY|CVV</code>
+└─ Real bank $0 authorization
 
-<code>/ppauth</code> - PayPal $0 Auth
+<code>/ppauth</code> - PayPal GraphQL Auth
 └─ <code>/ppauth CARD|MM|YY|CVV</code>
+└─ Real bank verification
 
-<code>/b3</code> - Braintree $0 Auth
+<code>/b3</code> - Braintree GraphQL Auth
 └─ <code>/b3 CARD|MM|YY|CVV</code>
+└─ Real bank authorization
 
-<code>/epi</code> - Stripe Epicalarc
-└─ <code>/epi CARD|MM|YY|CVV</code>
-
-<code>/sn</code> - Shopify Checkout
-└─ <code>/sn CARD|MM|YY|CVV</code>"""
+<code>/sn</code> - Shopify Real Checkout
+└─ <code>/sn CARD|MM|YY|CVV</code>
+└─ Full payment flow verification"""
             reply_markup = create_back_button("cat_single")
             await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode='HTML')
         
@@ -133,9 +134,9 @@ Check one card against ALL auth gateways simultaneously:
 or
 <code>/aa CARD|MM|YY|CVV</code>
 
-<b>Gates:</b> Stripe Auth, PayPal Auth, Braintree Auth, Shopify, Epicalarc
+<b>Gates:</b> Stripe Payment Intent, PayPal GraphQL, Braintree GraphQL, Shopify Checkout
 
-Runs all gates in parallel and shows which approve/decline."""
+Runs all gates in parallel showing real bank authorization results."""
             reply_markup = create_back_button("cat_single")
             await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode='HTML')
         
