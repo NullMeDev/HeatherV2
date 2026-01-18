@@ -92,6 +92,7 @@ from tools.shopify_db import (
 )
 from tools.stripe_db import add_stripe_sites_bulk, count_stripe_sites, get_valid_stripe_keys
 from gates.auto_checkout import auto_checkout_all_cards, extract_stripe_pk
+from gates.auto_checkout_enhanced import EnhancedAutoCheckout
 from bot.infrastructure.proxy_pool import (
     proxy_pool, init_proxy_pool, get_next_proxy_from_pool, mark_proxy_failed_in_pool,
     proxy_status, check_proxy, get_proxy_status_emoji
@@ -3459,6 +3460,171 @@ async def run_autoco_task(processing, store_url, do_checkout):
         )
 
 
+async def autocheckout_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle /autocheckout command - Enhanced Auto Checkout
+    
+    Phase 12: Full checkout flow with proxy, email, and batch card support
+    
+    Usage:
+        /autocheckout <url> <cards> [proxy] [email]
+        /autocheckout https://example.com card1|card2|card3
+        /autocheckout https://example.com card1|card2 http://proxy:8080
+        /autocheckout https://example.com card1|card2 http://proxy:8080 test@email.com
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "<b>🛒 Enhanced Auto Checkout</b>\n\n"
+            "<b>Full checkout automation with real bank charges.</b>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/autocheckout &lt;url&gt; &lt;cards&gt; [proxy] [email]</code>\n\n"
+            "<b>Cards Format:</b>\n"
+            "<code>4242424242424242|12|2025|123</code>\n"
+            "Multiple cards: separate with | between cards\n\n"
+            "<b>Examples:</b>\n"
+            "<code>/autocheckout https://store.com 4242424242424242|12|25|123</code>\n\n"
+            "<code>/autocheckout https://store.com card1|card2|card3 http://proxy:8080</code>\n\n"
+            "<code>/autocheckout https://store.com cards... http://proxy:8080 test@email.com</code>\n\n"
+            "<b>Features:</b>\n"
+            "✅ Real bank authorization & charges\n"
+            "✅ Proxy support\n"
+            "✅ Custom email\n"
+            "✅ Batch processing (10+ cards)\n"
+            "✅ No mock data or simulations\n"
+            "✅ Full checkout flow\n\n"
+            "<b>Note:</b> Only processes REAL transactions.",
+            parse_mode='HTML'
+        )
+        return
+    
+    # Parse arguments
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Missing arguments!\n\n"
+            "Usage: <code>/autocheckout &lt;url&gt; &lt;cards&gt;</code>",
+            parse_mode='HTML'
+        )
+        return
+    
+    store_url = context.args[0].strip()
+    if not store_url.startswith("http"):
+        store_url = f"https://{store_url}"
+    
+    # Parse cards (can be space or | separated)
+    cards_arg = ' '.join(context.args[1:]).strip()
+    
+    # Extract proxy if provided
+    proxy = None
+    email = None
+    
+    # Check for proxy (http://... or https://...)
+    proxy_match = re.search(r'(https?://[^\s]+)', cards_arg)
+    if proxy_match:
+        proxy = proxy_match.group(1)
+        cards_arg = cards_arg.replace(proxy, '').strip()
+    
+    # Check for email
+    email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', cards_arg)
+    if email_match:
+        email = email_match.group(1)
+        cards_arg = cards_arg.replace(email, '').strip()
+    
+    # Parse cards (split by whitespace or |, expecting format: num|mm|yy|cvv)
+    # Cards can be: "4242424242424242|12|25|123 4111111111111111|01|26|456"
+    card_patterns = re.findall(r'\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}', cards_arg)
+    
+    if not card_patterns:
+        await update.message.reply_text(
+            "❌ No valid cards found!\n\n"
+            "Card format: <code>4242424242424242|12|2025|123</code>\n"
+            "Multiple cards: separate with spaces or |",
+            parse_mode='HTML'
+        )
+        return
+    
+    cards = card_patterns
+    
+    processing = await update.message.reply_text(
+        f"<b>🛒 Enhanced Auto Checkout</b>\n\n"
+        f"Store: {store_url}\n"
+        f"Cards: {len(cards)}\n"
+        f"Proxy: {proxy or 'None'}\n"
+        f"Email: {email or 'Generated'}\n\n"
+        f"Initializing...",
+        parse_mode='HTML'
+    )
+    
+    # Run checkout in background
+    async def run_checkout():
+        try:
+            async with EnhancedAutoCheckout(store_url, proxy, email) as checkout:
+                # Progress callback
+                last_update = [0]
+                async def progress(current, total, result):
+                    if current - last_update[0] >= 3 or current == total or result.charged:
+                        last_update[0] = current
+                        status_emoji = "✅" if result.charged else ("✓" if result.approved else "✗")
+                        try:
+                            await processing.edit_text(
+                                f"<b>🛒 Auto Checkout</b>\n\n"
+                                f"Progress: {current}/{total}\n\n"
+                                f"Last: {result.card_masked}\n"
+                                f"{status_emoji} {result.status}: {result.message[:50]}",
+                                parse_mode='HTML'
+                            )
+                        except:
+                            pass
+                
+                summary = await checkout.process_cards(
+                    cards,
+                    progress_callback=progress,
+                    stop_on_success=False,
+                    delay_between=1.5
+                )
+                
+                # Final result
+                if summary['charged'] > 0:
+                    charged_results = [r for r in summary['results'] if r['charged']]
+                    msg = f"<b>✅ CHECKOUT SUCCESS</b>\n\n"
+                    msg += f"Store: {store_url}\n"
+                    msg += f"Tested: {summary['cards_tested']}\n"
+                    msg += f"Approved: {summary['approved']}\n"
+                    msg += f"<b>Charged: {summary['charged']}</b>\n\n"
+                    for r in charged_results[:3]:
+                        msg += f"💳 {r['card_masked']}\n{r['message']}\n\n"
+                elif summary['approved'] > 0:
+                    msg = f"<b>✓ Cards Approved (No Charges)</b>\n\n"
+                    msg += f"Store: {store_url}\n"
+                    msg += f"Tested: {summary['cards_tested']}\n"
+                    msg += f"Approved: {summary['approved']}\n\n"
+                    msg += "Cards are live but may need 3DS or specific amounts."
+                else:
+                    msg = f"<b>❌ All Cards Declined</b>\n\n"
+                    msg += f"Store: {store_url}\n"
+                    msg += f"Tested: {summary['cards_tested']}\n"
+                    msg += "No cards worked with this store."
+                
+                await processing.edit_text(msg, parse_mode='HTML')
+                
+        except ValueError as e:
+            await processing.edit_text(
+                f"<b>❌ Checkout Failed</b>\n\n"
+                f"Store: {store_url}\n"
+                f"Error: {str(e)}",
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            await processing.edit_text(
+                f"<b>❌ Error</b>\n\n"
+                f"Store: {store_url}\n"
+                f"Error: {str(e)[:150]}",
+                parse_mode='HTML'
+            )
+    
+    # Start background task
+    context.application.create_task(run_checkout())
+
+
 async def cards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /cards command - List cached cards"""
     cards = await asyncio.to_thread(get_all_cached_cards, "active")
@@ -3735,6 +3901,8 @@ def main():
     application.add_handler(CommandHandler("liststores", liststores_command))
     application.add_handler(CommandHandler("stopstores", stopstores_command))
     application.add_handler(CommandHandler("autoco", autoco_command))
+    application.add_handler(CommandHandler("autocheckout", autocheckout_command))  # Phase 12 Enhanced
+    application.add_handler(CommandHandler("aco", autocheckout_command))  # Short alias
     application.add_handler(CommandHandler("cards", cards_command))
     application.add_handler(CommandHandler("addcard", addcard_command))
     application.add_handler(CommandHandler("delcard", delcard_command))
