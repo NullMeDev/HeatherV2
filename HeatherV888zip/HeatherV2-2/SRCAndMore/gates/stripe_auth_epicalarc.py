@@ -21,8 +21,8 @@ fake = Faker()
 
 def stripe_auth_epicalarc_check(card_num, card_mon, card_yer, card_cvc, proxy=None):
     """
-    Enhanced Stripe Auth check using epicalarc.com
-    Tries Payment Intent API first, falls back to original implementation.
+    Enhanced Stripe Auth check - REAL BANK AUTHORIZATION
+    Uses Payment Intent API for real bank verification.
     
     Args:
         card_num: Card number
@@ -33,17 +33,17 @@ def stripe_auth_epicalarc_check(card_num, card_mon, card_yer, card_cvc, proxy=No
     
     Returns:
         tuple: (status, proxy_live)
-        status: "Approved", "Declined", "CCN", "3D Secure", or error message
+        status: Real bank response with decline codes
     """
-    # Try Payment Intent first
+    # Use Payment Intent for REAL bank authorization
     try:
         result = process_payment_intent(card_num, card_mon, card_yer, card_cvc, proxy=proxy, timeout=30)
-        if result and "APPROVED" in result.upper():
+        if result:
             return (result, True)
-    except Exception:
-        pass  # Fall through to original implementation
+    except Exception as e:
+        return (f"Error: {str(e)[:50]}", False)
     
-    # Fall back to original epicalarc implementation
+    # If Payment Intent fails, try fallback
     return _stripe_auth_epicalarc_check_original(card_num, card_mon, card_yer, card_cvc, proxy=proxy)
 
 

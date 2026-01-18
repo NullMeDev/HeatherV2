@@ -105,8 +105,9 @@ def _scrape_donation_page(session, url):
 def stripe_multi_check(card_num: str, card_mon: str, card_yer: str, card_cvc: str,
                        proxy: dict = None) -> Tuple[str, bool]:
     """
-    Multi-site Stripe AUTH check via full authorization flow
-    Tries multiple sites for redundancy
+"""Multi-site Stripe AUTH check - REAL BANK AUTHORIZATION
+    Creates token then submits to donation endpoint for real bank auth.
+    Tries multiple sites for redundancy.
     
     Returns:
         Tuple of (status_message, proxy_alive)
