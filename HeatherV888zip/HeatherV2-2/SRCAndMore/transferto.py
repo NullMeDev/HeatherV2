@@ -141,6 +141,7 @@ from bot.handlers.scanner import (
     create_stripe_stats_handler,
 )
 from bot.infrastructure.lifecycle import register_signal_handlers
+from bot.infrastructure.session_pool import initialize_session_pool, cleanup_session_pool
 
 
 async def auto_cache_approved_card(card_num: str, card_mon: str, card_yer: str, card_cvv: str,
@@ -3666,6 +3667,18 @@ def main():
     # Check proxy on startup
     print(f"{F}[*] Checking proxy status...{RESET}")
     check_proxy()
+    
+    # Initialize session pool (Phase 12.1)
+    print(f"{F}[*] Initializing HTTP session pool...{RESET}")
+    asyncio.get_event_loop().run_until_complete(
+        initialize_session_pool(
+            max_pool_size=20,
+            max_keepalive_connections=10,
+            max_connections=50,
+            timeout=22
+        )
+    )
+    print(f"{F}[✓] Session pool ready{RESET}")
     
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()

@@ -2,18 +2,23 @@
 HTTP Client Module
 
 Provides HTTP session setup with proxy support, retry logic, and randomized headers.
+
+Phase 12.1: Updated to support both legacy requests and modern httpx with session pooling.
 """
 
 import random
 import requests
+import httpx
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from faker import Faker
 from user_agent import generate_user_agent
+from typing import Optional, Tuple
 
 __all__ = [
     'create_session',
     'get_random_headers',
+    'create_async_client',
 ]
 
 
@@ -64,3 +69,55 @@ def get_random_headers(user_agent):
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0'
     }
+
+
+def create_async_client(
+    proxy_url: Optional[str] = None,
+    timeout: int = 22,
+    max_connections: int = 50,
+    max_keepalive: int = 10,
+) -> httpx.AsyncClient:
+    """
+    Create an httpx AsyncClient with optimal settings.
+    
+    Phase 12.1: Provides high-performance async HTTP client.
+    Use with session_pool for connection reuse.
+    
+    Args:
+        proxy_url: Optional proxy URL
+        timeout: Request timeout in seconds
+        max_connections: Maximum total connections
+        max_keepalive: Maximum keepalive connections
+        
+    Returns:
+        Configured httpx.AsyncClient
+    """
+    limits = httpx.Limits(
+        max_keepalive_connections=max_keepalive,
+        max_connections=max_connections,
+        keepalive_expiry=30.0,
+    )
+    
+    timeout_config = httpx.Timeout(
+        timeout=timeout,
+        connect=5.0,
+        read=timeout,
+        write=5.0,
+        pool=2.0,
+    )
+    
+    proxies = None
+    if proxy_url:
+        proxies = {
+            "http://": proxy_url,
+            "https://": proxy_url,
+        }
+    
+    return httpx.AsyncClient(
+        limits=limits,
+        timeout=timeout_config,
+        proxies=proxies,
+        verify=False,
+        follow_redirects=True,
+        http2=True,  # Enable HTTP/2 for better performance
+    )

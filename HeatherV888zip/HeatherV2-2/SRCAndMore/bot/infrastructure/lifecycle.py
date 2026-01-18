@@ -4,29 +4,29 @@ Bot Lifecycle Management Module
 Handles graceful shutdown, signal handlers, and cleanup operations.
 
 Phase 11.5: Extracted from main transferto.py to centralize lifecycle management.
+Phase 12.1: Added session pool cleanup on shutdown.
 """
 
 import os
 import sys
 import signal
+import asyncio
 from typing import Dict, Any
 
 
-def handle_shutdown(
+async def cleanup_resources(
     ongoing_checks: Dict[int, Any],
     stop_requested: Dict[int, bool],
     uploaded_files: Dict[int, str],
 ):
     """
-    Handle graceful shutdown on SIGTERM/SIGINT.
+    Cleanup all bot resources asynchronously.
     
     Args:
         ongoing_checks: Dictionary of user checks to clear
         stop_requested: Dictionary of stop flags to clear
         uploaded_files: Dictionary of uploaded file paths to clean up
     """
-    print("\n[*] Bot shutting down gracefully...")
-    
     # Clear ongoing checks
     for user_id in list(ongoing_checks.keys()):
         try:
@@ -49,6 +49,53 @@ def handle_shutdown(
                 os.remove(file_path)
     except Exception as e:
         print(f"[!] Error cleaning up files: {e}")
+    
+    # Cleanup session pool (Phase 12.1)
+    try:
+        from bot.infrastructure.session_pool import cleanup_session_pool
+        await cleanup_session_pool()
+        print("[✓] Session pool cleaned up")
+    except Exception as e:
+        print(f"[!] Error cleaning up session pool: {e}")
+
+
+def handle_shutdown(
+    ongoing_checks: Dict[int, Any],
+    stop_requested: Dict[int, bool],
+    uploaded_files: Dict[int, str],
+):
+    """
+    Handle graceful shutdown on SIGTERM/SIGINT.
+    
+    Args:
+        ongoing_checks: Dictionary of user checks to clear
+        stop_requested: Dictionary of stop flags to clear
+        uploaded_files: Dictionary of uploaded file paths to clean up
+    """
+    print("\n[*] Bot shutting down gracefully...")
+    
+    # Run async cleanup
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is running, schedule cleanup as a task
+            asyncio.create_task(cleanup_resources(ongoing_checks, stop_requested, uploaded_files))
+        else:
+            # If loop is not running, run cleanup synchronously
+            loop.run_until_complete(cleanup_resources(ongoing_checks, stop_requested, uploaded_files))
+    except Exception as e:
+        print(f"[!] Error during async cleanup: {e}")
+        # Fallback to synchronous cleanup
+        for user_id in list(ongoing_checks.keys()):
+            try:
+                del ongoing_checks[user_id]
+            except KeyError:
+                pass
+        for user_id in list(stop_requested.keys()):
+            try:
+                del stop_requested[user_id]
+            except KeyError:
+                pass
     
     print("[✓] Cleanup complete. Goodbye!")
     sys.exit(0)
